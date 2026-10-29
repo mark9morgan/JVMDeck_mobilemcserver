@@ -1,6 +1,6 @@
 # JvmDeck — Mobile JVM & Server Host for Android
 
-**JvmDeck** is an advanced Android application built with Kotlin and Jetpack Compose that allows users to run Java servers (such as Minecraft servers: Paper, Vanilla, Forge, Spigot) natively on Android devices (Android 14+, `arm64-v8a` architecture) via a specialized Android-compatible OpenJDK build (bionic/aarch64).
+**JvmDeck** is an advanced Android application built with Kotlin and Jetpack Compose that allows users to run Java servers (such as Minecraft servers) natively on Android devices (Android 14+, `arm64-v8a` architecture) via a specialized Android-compatible OpenJDK build (bionic/aarch64).
 
 ---
 
@@ -71,4 +71,6 @@
 
 ## License
 
-This project is provided as-is for educational and personal server hosting purposes.
+This project is open-source and distributed under the [MIT License](LICENSE).
+
+*Note on Runtimes & Binaries:* Pre-compiled OpenJDK / JRE binaries and native libraries referenced or utilized by the app belong to their respective copyright holders (e.g., PojavLauncherTeam / OpenJDK contributors) and are distributed under their respective terms (such as GPLv2 with Classpath Exception).
