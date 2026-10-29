@@ -1,0 +1,8 @@
+# Set default behavior, in case people don't have core.autocrlf set.
+* text=eol=lf
+
+# Explicitly declare files that you want to always be treated as binary and not diffed
+*.so binary
+*.tar.xz binary
+*.zip binary
+*.jar binary

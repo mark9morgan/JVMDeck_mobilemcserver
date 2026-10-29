@@ -1,0 +1,32 @@
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.hprof
+.net.rim.ejde.prefs
+.project
+.classpath
+.settings/
+local.properties
+
+# Gradle & Build outputs
+.gradle/
+build/
+app/build/
+.cxx/
+app/.cxx/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+*.log
+
+# Temporary / Workspace folders
+.tmp_jre/
+scratch/
+backups/
+
+# Large JRE archives & platform-specific native binaries (not committed)
+*.zip
+app/src/main/assets/**/*.tar.xz
+app/src/main/assets/**/*.zip
+app/src/main/jniLibs/arm64-v8a/*.so
