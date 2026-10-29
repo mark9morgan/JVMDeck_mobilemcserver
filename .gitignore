@@ -24,6 +24,7 @@ Thumbs.db
 .tmp_jre/
 scratch/
 backups/
+local_jre_repo/
 
 # Large JRE archives & platform-specific native binaries (not committed)
 *.zip

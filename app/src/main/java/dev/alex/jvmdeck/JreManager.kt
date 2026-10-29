@@ -72,60 +72,66 @@ class JreManager(
     }
 
     fun downloadAndInstall(
-        downloadUrl: String,
+        baseUrl: String,
         onProgress: (Float, String) -> Unit
     ) {
         if (isInstalled()) return
         jreHome.deleteRecursively()
         jreHome.mkdirs()
 
-        val tempFile = File(ctx.cacheDir, "jre_download.tar.xz")
-        try {
-            onProgress(0f, "Підключення до сервера...")
-            val url = URL(downloadUrl)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.setRequestProperty("User-Agent", "JvmDeck-Android")
-            connection.connectTimeout = 15000
-            connection.readTimeout = 30000
-            connection.connect()
+        val archives = listOf("universal.tar.xz", "bin-arm64.tar.xz")
+        val totalArchives = archives.size
 
-            val fileSize = connection.contentLength.toFloat()
-            var downloadedBytes = 0L
+        archives.forEachIndexed { index, archiveName ->
+            val cleanBase = baseUrl.removeSuffix("/")
+            val fileUrl = "$cleanBase/$archiveName"
+            val tempFile = File(ctx.cacheDir, archiveName)
 
-            connection.inputStream.use { input ->
-                tempFile.outputStream().use { output ->
-                    val buffer = ByteArray(8192)
-                    var bytesRead: Int
-                    while (input.read(buffer).also { bytesRead = it } != -1) {
-                        output.write(buffer, 0, bytesRead)
-                        downloadedBytes += bytesRead
-                        if (fileSize > 0f) {
-                            val progress = (downloadedBytes / fileSize).coerceIn(0f, 1f)
-                            onProgress(progress, "Завантаження JRE: ${(progress * 100).toInt()}% (${downloadedBytes / 1024 / 1024}MB / ${(fileSize / 1024 / 1024).toInt()}MB)")
-                        } else {
-                            onProgress(0.5f, "Завантаження JRE... (${downloadedBytes / 1024 / 1024}MB)")
+            try {
+                onProgress(index.toFloat() / totalArchives, "Завантаження $archiveName (${index + 1}/$totalArchives)...")
+                val url = URL(fileUrl)
+                val connection = url.openConnection() as HttpURLConnection
+                connection.setRequestProperty("User-Agent", "JvmDeck-Android")
+                connection.connectTimeout = 15000
+                connection.readTimeout = 30000
+                connection.connect()
+
+                val fileSize = connection.contentLength.toFloat()
+                var downloadedBytes = 0L
+
+                connection.inputStream.use { input ->
+                    tempFile.outputStream().use { output ->
+                        val buffer = ByteArray(8192)
+                        var bytesRead: Int
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            downloadedBytes += bytesRead
+                            if (fileSize > 0f) {
+                                val fileProgress = (downloadedBytes / fileSize).coerceIn(0f, 1f)
+                                val totalProgress = (index + fileProgress) / totalArchives
+                                onProgress(totalProgress, "Завантаження $archiveName: ${(fileProgress * 100).toInt()}%")
+                            } else {
+                                onProgress((index + 0.5f) / totalArchives, "Завантаження $archiveName...")
+                            }
                         }
                     }
                 }
+
+                onProgress((index + 0.9f) / totalArchives, "Розпакування $archiveName...")
+                tempFile.inputStream().use { stream ->
+                    unpackTarXzStream(stream, fileUrl)
+                }
+            } finally {
+                tempFile.delete()
             }
-
-            onProgress(1f, "Розпакування архіву...")
-            tempFile.inputStream().use { stream ->
-                unpackTarXzStream(stream, downloadUrl)
-            }
-
-            flattenNestedDir()
-            ensureLibraryLinks()
-            ensureBinJavaSymlink()
-
-            marker.createNewFile()
-            onProgress(1f, "Встановлення завершено успішно!")
-        } catch (e: Exception) {
-            ServerRuntime.append("Помилка завантаження JRE: ${e.message}")
-            throw e
-        } finally {
-            tempFile.delete()
         }
+
+        flattenNestedDir()
+        ensureLibraryLinks()
+        ensureBinJavaSymlink()
+
+        marker.createNewFile()
+        onProgress(1f, "Встановлення завершено успішно!")
     }
 
     private fun flattenNestedDir() {
