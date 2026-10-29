@@ -12,16 +12,19 @@
 - **Interactive Console:** Real-time `stdout`/`stderr` log streaming and command input to the running JVM process.
 - **Mod & Plugin Integration:** Built-in integration with Modrinth API v2 to search, download, and install compatible plugins and mods.
 - **File Manager:** Built-in file explorer to browse server directories, edit configuration files, and import custom `.jar` files or assets.
+- **Real-Time Monitoring:** Live performance charts (CPU, RAM usage, process metrics) powered by `MonitoringRuntime` and `PerformanceChartCard`.
+- **Process Management & Stale Killer:** Automatic cleanup of orphan/stale Java processes via `StaleProcessKiller`.
+- **Localization Support:** Multi-language support managed via `LanguageManager` and `AppStrings`.
 - **MTE & Pointer Tagging Bypass:** Includes a native C agent (`libnotbi.so`) to disable Bionic heap pointer tagging and MTE, preventing SIGABRT crashes on modern Android 14+ devices.
 
 ---
 
 ## Tech Stack & Architecture
 
-- **UI:** Jetpack Compose, Material 3, Kotlin Coroutines.
-- **Background Processing:** Android Foreground Service (`specialUse` type), `ProcessBuilder`.
+- **UI:** Jetpack Compose, Material 3, Kotlin Coroutines, Custom Charts.
+- **Background Processing:** Android Foreground Service (`specialUse` type), `ProcessBuilder`, `MonitoringRuntime`.
 - **Compression & Archives:** Apache Commons Compress (`tar.xz`, `xz`).
-- **Native Development:** C / CMake (Bionic `mallopt` & `prctl` interop).
+- **Native Development:** C / CMake (Bionic `mallopt` & `prctl` interop, `libnotbi.so`).
 
 ---
 
@@ -54,6 +57,7 @@
 1. Open the app and navigate to **Settings** -> **Diag** to verify that `libjava.so`, `jvm.cfg`, and `libjvm.so` are correctly detected.
 2. Run a simple test or check `java -version`.
 3. Create a test server (e.g., Paper 1.20.4), let it auto-download `server.jar`, and start it.
+4. Check the **Monitoring** tab to review real-time CPU and RAM performance charts.
 
 ---
 
