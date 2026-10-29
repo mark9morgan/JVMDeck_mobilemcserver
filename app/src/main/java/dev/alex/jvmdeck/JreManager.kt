@@ -6,11 +6,14 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
 import java.io.File
+import java.io.InputStream
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * Виконуваний файл "java" лежить у jniLibs/arm64-v8a/libjava_XX.so (перейменований bin/java),
  * бо Android 10+ забороняє execve з filesDir.
- * Решта JRE (lib/, conf/ ...) це дані, їх розпаковуємо з assets в filesDir/<jreDirName>.
+ * Решта JRE (lib/, conf/ ...) це дані, їх розпаковуємо з assets або завантажуємо динамічно.
  */
 class JreManager(
     private val ctx: Context,
@@ -68,6 +71,63 @@ class JreManager(
         marker.createNewFile()
     }
 
+    fun downloadAndInstall(
+        downloadUrl: String,
+        onProgress: (Float, String) -> Unit
+    ) {
+        if (isInstalled()) return
+        jreHome.deleteRecursively()
+        jreHome.mkdirs()
+
+        val tempFile = File(ctx.cacheDir, "jre_download.tar.xz")
+        try {
+            onProgress(0f, "Підключення до сервера...")
+            val url = URL(downloadUrl)
+            val connection = url.openConnection() as HttpURLConnection
+            connection.setRequestProperty("User-Agent", "JvmDeck-Android")
+            connection.connectTimeout = 15000
+            connection.readTimeout = 30000
+            connection.connect()
+
+            val fileSize = connection.contentLength.toFloat()
+            var downloadedBytes = 0L
+
+            connection.inputStream.use { input ->
+                tempFile.outputStream().use { output ->
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        downloadedBytes += bytesRead
+                        if (fileSize > 0f) {
+                            val progress = (downloadedBytes / fileSize).coerceIn(0f, 1f)
+                            onProgress(progress, "Завантаження JRE: ${(progress * 100).toInt()}% (${downloadedBytes / 1024 / 1024}MB / ${(fileSize / 1024 / 1024).toInt()}MB)")
+                        } else {
+                            onProgress(0.5f, "Завантаження JRE... (${downloadedBytes / 1024 / 1024}MB)")
+                        }
+                    }
+                }
+            }
+
+            onProgress(1f, "Розпакування архіву...")
+            tempFile.inputStream().use { stream ->
+                unpackTarXzStream(stream, downloadUrl)
+            }
+
+            flattenNestedDir()
+            ensureLibraryLinks()
+            ensureBinJavaSymlink()
+
+            marker.createNewFile()
+            onProgress(1f, "Встановлення завершено успішно!")
+        } catch (e: Exception) {
+            ServerRuntime.append("Помилка завантаження JRE: ${e.message}")
+            throw e
+        } finally {
+            tempFile.delete()
+        }
+    }
+
     private fun flattenNestedDir() {
         listOf("jre", "jdk").forEach { dirName ->
             val nested = File(jreHome, dirName)
@@ -101,7 +161,6 @@ class JreManager(
         libDir.mkdirs()
         serverDir.mkdirs()
 
-        // Створюємо посилання у lib/ та lib/server/ для всіх .so бібліотек (наприклад, libmanagement.so, libnet.so, libnio.so)
         jreHome.walkTopDown().filter { it.isFile && it.name.endsWith(".so") }.forEach { soFile ->
             val targetInLib = File(libDir, soFile.name)
             if (!targetInLib.exists()) {
@@ -122,53 +181,61 @@ class JreManager(
         }
     }
 
-    private fun unpackTarXz(assetPath: String) {
+    private fun unpackTarXzStream(inputStream: InputStream, sourceName: String) {
         val root = jreHome.canonicalPath
         try {
-            ctx.assets.open(assetPath).use { raw ->
-                XZCompressorInputStream(raw.buffered()).use { xz ->
-                    TarArchiveInputStream(xz).use { tar ->
-                        var entry: TarArchiveEntry? = tar.nextEntry
-                        while (entry != null) {
-                            var name = entry.name
-                            if (name.startsWith("./")) {
-                                name = name.substring(2)
-                            } else if (name.startsWith("/")) {
-                                name = name.substring(1)
-                            }
-
-                            // Видаляємо вкладені префікси jre/ або jdk/ з шляху архіву
-                            if (name.startsWith("jre/")) {
-                                name = name.substring(4)
-                            } else if (name.startsWith("jdk/")) {
-                                name = name.substring(4)
-                            } else if (name == "jre" || name == "jdk") {
-                                name = ""
-                            }
-
-                            val isBinFile = name == "bin" || name.startsWith("bin/")
-                            if (!isBinFile && name.isNotEmpty()) {
-                                val out = File(jreHome, name)
-                                require(out.canonicalPath.startsWith(root)) { "path traversal: ${entry.name}" }
-
-                                if (entry.isSymbolicLink) {
-                                    out.parentFile?.mkdirs()
-                                    out.delete()
-                                    Os.symlink(entry.linkName, out.absolutePath)
-                                } else if (entry.isDirectory) {
-                                    out.mkdirs()
-                                } else {
-                                    out.parentFile?.mkdirs()
-                                    out.outputStream().use { tar.copyTo(it) }
-                                }
-                            }
-                            entry = tar.nextEntry
+            XZCompressorInputStream(inputStream.buffered()).use { xz ->
+                TarArchiveInputStream(xz).use { tar ->
+                    var entry: TarArchiveEntry? = tar.nextEntry
+                    while (entry != null) {
+                        var name = entry.name
+                        if (name.startsWith("./")) {
+                            name = name.substring(2)
+                        } else if (name.startsWith("/")) {
+                            name = name.substring(1)
                         }
+
+                        if (name.startsWith("jre/")) {
+                            name = name.substring(4)
+                        } else if (name.startsWith("jdk/")) {
+                            name = name.substring(4)
+                        } else if (name == "jre" || name == "jdk") {
+                            name = ""
+                        }
+
+                        val isBinFile = name == "bin" || name.startsWith("bin/")
+                        if (!isBinFile && name.isNotEmpty()) {
+                            val out = File(jreHome, name)
+                            require(out.canonicalPath.startsWith(root)) { "path traversal: ${entry.name}" }
+
+                            if (entry.isSymbolicLink) {
+                                out.parentFile?.mkdirs()
+                                out.delete()
+                                Os.symlink(entry.linkName, out.absolutePath)
+                            } else if (entry.isDirectory) {
+                                out.mkdirs()
+                            } else {
+                                out.parentFile?.mkdirs()
+                                out.outputStream().use { tar.copyTo(it) }
+                            }
+                        }
+                        entry = tar.nextEntry
                     }
                 }
             }
         } catch (e: Exception) {
-            ServerRuntime.append("Помилка розпакування $assetPath: ${e.message}")
+            ServerRuntime.append("Помилка розпакування $sourceName: ${e.message}")
+            throw e
+        }
+    }
+
+    private fun unpackTarXz(assetPath: String) {
+        try {
+            ctx.assets.open(assetPath).use { raw ->
+                unpackTarXzStream(raw, assetPath)
+            }
+        } catch (e: Exception) {
+            ServerRuntime.append("Помилка asset $assetPath: ${e.message}")
             throw e
         }
     }

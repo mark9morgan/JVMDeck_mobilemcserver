@@ -113,6 +113,18 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun MainAppScreen() {
         val context = LocalContext.current
+
+        var jreInstalled by remember {
+            mutableStateOf(JreManager.forJavaVersion(context, 21).isInstalled())
+        }
+
+        if (!jreInstalled) {
+            SetupJreScreen {
+                jreInstalled = true
+            }
+            return
+        }
+
         val log by ServerRuntime.log.collectAsState()
         val running by ServerRuntime.running.collectAsState()
         val serverStatus by ServerRuntime.status.collectAsState()
