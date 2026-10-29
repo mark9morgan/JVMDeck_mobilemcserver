@@ -13,9 +13,9 @@ import kotlin.concurrent.thread
 @Composable
 fun SetupJreScreen(onJreInstalled: () -> Unit) {
     val context = LocalContext.current
-    var downloadUrl by remember { mutableStateOf("http://10.0.2.2:8000/universal.tar.xz") }
+    var downloadUrl by remember { mutableStateOf("http://10.0.2.2:8000") }
     var progress by remember { mutableStateOf(0f) }
-    var statusText by remember { mutableStateOf("Очікування посилання для завантаження JRE...") }
+    var statusText by remember { mutableStateOf("Очікування підключення до сервера...") }
     var isDownloading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -28,12 +28,12 @@ fun SetupJreScreen(onJreInstalled: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "Ласкаво просимо в JvmDeck!",
+                text = "Встановлення Java (JRE)",
                 style = MaterialTheme.typography.headlineMedium
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Для запуску Java-серверів (Minecraft тощо) потрібен Java Runtime Environment (JRE). Щоб додаток був легким і відповідав вимогам Google Play, ви можете завантажити JRE з локального сервера на вашому ПК.",
+                text = "Для запуску серверів у JvmDeck потрібен Java Runtime. Файли завантажуються з окремої локальної папки `server_test/` на вашому ПК.",
                 style = MaterialTheme.typography.bodyMedium
             )
             Spacer(modifier = Modifier.height(24.dp))
@@ -41,7 +41,7 @@ fun SetupJreScreen(onJreInstalled: () -> Unit) {
             OutlinedTextField(
                 value = downloadUrl,
                 onValueChange = { downloadUrl = it },
-                label = { Text("URL архіву JRE (напр. universal.tar.xz)") },
+                label = { Text("Базовий URL сервера (напр. http://10.0.2.2:8000)") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 enabled = !isDownloading
@@ -54,13 +54,12 @@ fun SetupJreScreen(onJreInstalled: () -> Unit) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("💡 Як підняти локальний сервер на ПК для тесту:", style = MaterialTheme.typography.titleSmall)
+                    Text("💡 Як запустити локальний сервер на ПК:", style = MaterialTheme.typography.titleSmall)
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        "1. Покладіть архів `universal.tar.xz` у будь-яку папку на ПК.\n" +
-                        "2. У цій папці відкрийте термінал і виконайте:\n" +
-                        "   `python -m http.server 8000`\n" +
-                        "3. Переконайтеся, що телефон і ПК в одній Wi-Fi мережі (або використовуйте `10.0.2.2` для емулятора).",
+                        "1. Файли JRE вже лежать в окремій папці `server_test/` у корені проєкту.\n" +
+                        "2. Запустіть сервер: `python server_test/run.py`\n" +
+                        "3. Використовуйте `10.0.2.2:8000` для емулятора або локальний IP ПК для телефону.",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }

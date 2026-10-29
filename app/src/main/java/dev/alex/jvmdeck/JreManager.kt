@@ -13,7 +13,7 @@ import java.net.URL
 /**
  * Виконуваний файл "java" лежить у jniLibs/arm64-v8a/libjava_XX.so (перейменований bin/java),
  * бо Android 10+ забороняє execve з filesDir.
- * Решта JRE (lib/, conf/ ...) це дані, їх розпаковуємо з assets або завантажуємо динамічно.
+ * Решта JRE (lib/, conf/ ...) це дані, їх розпаковуємо з assets або завантажуємо динамічно з локального сервера.
  */
 class JreManager(
     private val ctx: Context,
@@ -152,7 +152,7 @@ class JreManager(
         val binDir = File(jreHome, "bin")
         binDir.mkdirs()
         val javaSymlink = File(binDir, "java")
-        val targetBin = javaBin // points to nativeLibraryDir/libjava_XX.so
+        val targetBin = javaBin
         if (targetBin.exists()) {
             runCatching {
                 javaSymlink.delete()
