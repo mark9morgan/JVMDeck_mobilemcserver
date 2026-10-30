@@ -13,101 +13,84 @@ import kotlin.concurrent.thread
 @Composable
 fun SetupJreScreen(onJreInstalled: () -> Unit) {
     val context = LocalContext.current
-    var downloadUrl by remember { mutableStateOf("http://10.0.2.2:8000") }
     var progress by remember { mutableStateOf(0f) }
-    var statusText by remember { mutableStateOf("Очікування підключення до сервера...") }
+    var statusText by remember { mutableStateOf("Підготовка до встановлення...") }
     var isDownloading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Автоматично запускаємо встановлення при відкритті екрана
+    LaunchedEffect(Unit) {
+        if (!isDownloading) {
+            isDownloading = true
+            errorMessage = null
+            thread(name = "jre-auto-download") {
+                try {
+                    val manager = JreManager.forJavaVersion(context, 21)
+                    val releaseBaseUrl = "https://github.com/mark9morgan/JVMDeck_mobilemcserver/releases/download/jre"
+                    manager.downloadAndInstall(releaseBaseUrl) { p, s ->
+                        progress = p
+                        statusText = s
+                    }
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        onJreInstalled()
+                    }
+                } catch (e: Exception) {
+                    isDownloading = false
+                    errorMessage = "Помилка встановлення: ${e.localizedMessage}"
+                }
+            }
+        }
+    }
 
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
+                .padding(32.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "Встановлення Java (JRE)",
+                text = "Налаштування JvmDeck",
                 style = MaterialTheme.typography.headlineMedium
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "Для запуску серверів у JvmDeck потрібен Java Runtime. Файли завантажуються з окремої локальної папки `server_test/` на вашому ПК.",
-                style = MaterialTheme.typography.bodyMedium
+                text = "Будь ласка, зачекайте, поки ми підготуємо необхідні системні компоненти для запуску серверів.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(modifier = Modifier.height(24.dp))
-
-            OutlinedTextField(
-                value = downloadUrl,
-                onValueChange = { downloadUrl = it },
-                label = { Text("Базовий URL сервера (напр. http://10.0.2.2:8000)") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                enabled = !isDownloading
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("💡 Як запустити локальний сервер на ПК:", style = MaterialTheme.typography.titleSmall)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        "1. Файли JRE вже лежать в окремій папці `server_test/` у корені проєкту.\n" +
-                        "2. Запустіть сервер: `python server_test/run.py`\n" +
-                        "3. Використовуйте `10.0.2.2:8000` для емулятора або локальний IP ПК для телефону.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(36.dp))
 
             if (isDownloading) {
                 LinearProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.fillMaxWidth().height(8.dp)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(statusText, style = MaterialTheme.typography.bodySmall)
-            } else {
-                Button(
-                    onClick = {
-                        if (downloadUrl.isBlank()) {
-                            errorMessage = "Введіть дійсний URL"
-                            return@Button
-                        }
-                        isDownloading = true
-                        errorMessage = null
-                        thread(name = "jre-download") {
-                            try {
-                                val manager = JreManager.forJavaVersion(context, 21)
-                                manager.downloadAndInstall(downloadUrl) { p, s ->
-                                    progress = p
-                                    statusText = s
-                                }
-                                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                    onJreInstalled()
-                                }
-                            } catch (e: Exception) {
-                                isDownloading = false
-                                errorMessage = "Помилка: ${e.localizedMessage}"
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().height(50.dp)
-                ) {
-                    Text("Завантажити та встановити JRE")
-                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = statusText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
 
             if (errorMessage != null) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(errorMessage!!, color = MaterialTheme.colorScheme.error)
+                Spacer(modifier = Modifier.height(20.dp))
+                Text(
+                    text = errorMessage!!,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = {
+                        isDownloading = false
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Спробувати знову")
+                }
             }
         }
     }

@@ -9,11 +9,12 @@ import java.io.File
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.zip.ZipFile
 
 /**
  * Виконуваний файл "java" лежить у jniLibs/arm64-v8a/libjava_XX.so (перейменований bin/java),
  * бо Android 10+ забороняє execve з filesDir.
- * Решта JRE (lib/, conf/ ...) це дані, їх розпаковуємо з assets або завантажуємо динамічно з локального сервера.
+ * Решта JRE (lib/, conf/ ...) це дані, їх розпаковуємо з assets або завантажуємо динамічно у вигляді .zip пакетів з сервера.
  */
 class JreManager(
     private val ctx: Context,
@@ -79,79 +80,89 @@ class JreManager(
         jreHome.deleteRecursively()
         jreHome.mkdirs()
 
-        val archives = listOf("universal.tar.xz", "bin-arm64.tar.xz", "jre.tar.xz")
+        val zipFileName = if (majorVersion == 8) "jre.zip" else "jre-$majorVersion.zip"
         val cleanBase = baseUrl.removeSuffix("/")
+        val fileUrl = "$cleanBase/$zipFileName"
+        val tempZipFile = File(ctx.cacheDir, zipFileName)
+        val extractDir = File(ctx.cacheDir, "extracted_$majorVersion")
 
-        val targetArchives = archives.filter { archive ->
-            try {
-                val checkUrl = URL("$cleanBase/$assetDir/$archive")
-                val conn = checkUrl.openConnection() as HttpURLConnection
-                conn.requestMethod = "HEAD"
-                conn.connectTimeout = 5000
-                conn.connect()
-                val ok = conn.responseCode == 200
-                conn.disconnect()
-                ok
-            } catch (_: Exception) {
-                false
+        try {
+            onProgress(0f, "Підключення до сервера ($zipFileName)...")
+            val url = URL(fileUrl)
+            val connection = url.openConnection() as HttpURLConnection
+            connection.setRequestProperty("User-Agent", "JvmDeck-Android")
+            connection.connectTimeout = 15000
+            connection.readTimeout = 30000
+            connection.connect()
+
+            if (connection.responseCode != 200) {
+                throw RuntimeException("HTTP error ${connection.responseCode} for $fileUrl")
             }
-        }.ifEmpty { listOf("universal.tar.xz", "bin-arm64.tar.xz") }
 
-        val totalArchives = targetArchives.size
+            val fileSize = connection.contentLength.toFloat()
+            var downloadedBytes = 0L
 
-        targetArchives.forEachIndexed { index, archiveName ->
-            val fileUrl = "$cleanBase/$assetDir/$archiveName"
-            val tempFile = File(ctx.cacheDir, archiveName)
-
-            try {
-                onProgress(index.toFloat() / totalArchives, "Завантаження $assetDir/$archiveName (${index + 1}/$totalArchives)...")
-                val url = URL(fileUrl)
-                val connection = url.openConnection() as HttpURLConnection
-                connection.setRequestProperty("User-Agent", "JvmDeck-Android")
-                connection.connectTimeout = 15000
-                connection.readTimeout = 30000
-                connection.connect()
-
-                if (connection.responseCode != 200) {
-                    return@forEachIndexed
+            connection.inputStream.use { input ->
+                tempZipFile.outputStream().use { output ->
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        downloadedBytes += bytesRead
+                        if (fileSize > 0f) {
+                            val progress = (downloadedBytes / fileSize).coerceIn(0f, 1f)
+                            onProgress(progress, "Завантаження JRE: ${(progress * 100).toInt()}% (${downloadedBytes / 1024 / 1024}MB)")
+                        } else {
+                            onProgress(0.5f, "Завантаження JRE... (${downloadedBytes / 1024 / 1024}MB)")
+                        }
+                    }
                 }
+            }
 
-                val fileSize = connection.contentLength.toFloat()
-                var downloadedBytes = 0L
-
-                connection.inputStream.use { input ->
-                    tempFile.outputStream().use { output ->
-                        val buffer = ByteArray(8192)
-                        var bytesRead: Int
-                        while (input.read(buffer).also { bytesRead = it } != -1) {
-                            output.write(buffer, 0, bytesRead)
-                            downloadedBytes += bytesRead
-                            if (fileSize > 0f) {
-                                val fileProgress = (downloadedBytes / fileSize).coerceIn(0f, 1f)
-                                val totalProgress = (index + fileProgress) / totalArchives
-                                onProgress(totalProgress, "Завантаження $archiveName: ${(fileProgress * 100).toInt()}%")
-                            } else {
-                                onProgress((index + 0.5f) / totalArchives, "Завантаження $archiveName...")
+            onProgress(0.7f, "Розпакування ZIP контейнера...")
+            extractDir.mkdirs()
+            ZipFile(tempZipFile).use { zip ->
+                val entries = zip.entries()
+                while (entries.hasMoreElements()) {
+                    val entry = entries.nextElement()
+                    val destFile = File(extractDir, entry.name)
+                    if (entry.isDirectory) {
+                        destFile.mkdirs()
+                    } else {
+                        destFile.parentFile?.mkdirs()
+                        zip.getInputStream(entry).use { input ->
+                            destFile.outputStream().use { output ->
+                                input.copyTo(output)
                             }
                         }
                     }
                 }
-
-                onProgress((index + 0.9f) / totalArchives, "Розпакування $archiveName...")
-                tempFile.inputStream().use { stream ->
-                    unpackTarXzStream(stream, fileUrl)
-                }
-            } finally {
-                tempFile.delete()
             }
+
+            onProgress(0.85f, "Розпакування внутрішніх архітектурних пакетів...")
+            val innerTarXz = listOf("universal.tar.xz", "bin-arm64.tar.xz", "jre.tar.xz")
+            innerTarXz.forEach { tarName ->
+                val tarFile = File(extractDir, tarName)
+                if (tarFile.exists()) {
+                    tarFile.inputStream().use { stream ->
+                        unpackTarXzStream(stream, tarName)
+                    }
+                }
+            }
+
+            flattenNestedDir()
+            ensureLibraryLinks()
+            ensureBinJavaSymlink()
+
+            marker.createNewFile()
+            onProgress(1f, "Встановлення завершено успішно!")
+        } catch (e: Exception) {
+            ServerRuntime.append("Помилка завантаження JRE: ${e.message}")
+            throw e
+        } finally {
+            tempZipFile.delete()
+            extractDir.deleteRecursively()
         }
-
-        flattenNestedDir()
-        ensureLibraryLinks()
-        ensureBinJavaSymlink()
-
-        marker.createNewFile()
-        onProgress(1f, "Встановлення завершено успішно!")
     }
 
     private fun flattenNestedDir() {
