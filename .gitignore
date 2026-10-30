@@ -26,6 +26,8 @@ scratch/
 backups/
 server_test/
 docs/
+git_release/
+tools/
 
 # Large JRE archives & platform-specific native binaries (not committed)
 *.zip
