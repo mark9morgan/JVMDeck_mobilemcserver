@@ -48,6 +48,21 @@ android {
     androidResources {
         noCompress += listOf("zip", "xz")
     }
+
+    tasks.matching { it.name.startsWith("assemble") }.configureEach {
+        doLast {
+            val apkOutputDir = layout.buildDirectory.dir("outputs/apk").get().asFile
+            if (apkOutputDir.exists()) {
+                apkOutputDir.walkTopDown().filter { it.extension == "apk" && it.name != "JvmDeck.apk" }.forEach { apkFile ->
+                    val targetFile = File(apkFile.parentFile, "JvmDeck.apk")
+                    if (targetFile.exists()) targetFile.delete()
+                    apkFile.copyTo(targetFile, overwrite = true)
+                    apkFile.delete()
+                    println("Successfully created APK: ${targetFile.absolutePath}")
+                }
+            }
+        }
+    }
 }
 
 dependencies {

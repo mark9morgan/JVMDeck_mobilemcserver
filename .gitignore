@@ -25,9 +25,9 @@ Thumbs.db
 scratch/
 backups/
 server_test/
+docs/
 
 # Large JRE archives & platform-specific native binaries (not committed)
 *.zip
-app/src/main/assets/**/*.tar.xz
-app/src/main/assets/**/*.zip
-app/src/main/jniLibs/arm64-v8a/*.so
+git_release/**/*.zip
+git_release/**/*.tar.xz

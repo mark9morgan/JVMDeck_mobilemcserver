@@ -46,30 +46,45 @@ class JreManager(
         jreHome.deleteRecursively()
         jreHome.mkdirs()
 
-        val effectiveAssetDir = try {
-            val list = ctx.assets.list(assetDir)
-            if (list != null && list.isNotEmpty()) assetDir else JRE_ASSET_DIR
-        } catch (_: Exception) {
-            JRE_ASSET_DIR
+        // 1. Спочатку намагаємося завантажити автоматично з GitHub Releases
+        try {
+            val releaseUrl = "https://github.com/mark9morgan/JVMDeck_mobilemcserver/releases/download/jre"
+            downloadAndInstall(releaseUrl) { _, _ -> }
+            if (isInstalled()) return
+        } catch (e: Exception) {
+            ServerRuntime.append("Автозавантаження JRE ($assetDir) з мережі: ${e.message}, спроба з assets...")
         }
 
-        val assetFiles = try { ctx.assets.list(effectiveAssetDir)?.toList() ?: emptyList() } catch (_: Exception) { emptyList() }
-        val targets = listOf("jre.tar.xz", "universal.tar.xz", "bin-arm64.tar.xz").filter { assetFiles.contains(it) }
-
-        if (targets.isEmpty()) {
-            unpackTarXz("$effectiveAssetDir/universal.tar.xz")
-            unpackTarXz("$effectiveAssetDir/bin-arm64.tar.xz")
-        } else {
-            for (archive in targets) {
-                unpackTarXz("$effectiveAssetDir/$archive")
+        // 2. Fallback на assets (якщо файли залишилися локально в assets)
+        try {
+            val effectiveAssetDir = try {
+                val list = ctx.assets.list(assetDir)
+                if (list != null && list.isNotEmpty()) assetDir else JRE_ASSET_DIR
+            } catch (_: Exception) {
+                JRE_ASSET_DIR
             }
+
+            val assetFiles = try { ctx.assets.list(effectiveAssetDir)?.toList() ?: emptyList() } catch (_: Exception) { emptyList() }
+            val targets = listOf("jre.tar.xz", "universal.tar.xz", "bin-arm64.tar.xz").filter { assetFiles.contains(it) }
+
+            if (targets.isEmpty()) {
+                unpackTarXz("$effectiveAssetDir/universal.tar.xz")
+                unpackTarXz("$effectiveAssetDir/bin-arm64.tar.xz")
+            } else {
+                for (archive in targets) {
+                    unpackTarXz("$effectiveAssetDir/$archive")
+                }
+            }
+
+            flattenNestedDir()
+            ensureLibraryLinks()
+            ensureBinJavaSymlink()
+
+            marker.createNewFile()
+        } catch (e2: Exception) {
+            ServerRuntime.append("Помилка встановлення JRE з assets: ${e2.message}")
+            throw e2
         }
-
-        flattenNestedDir()
-        ensureLibraryLinks()
-        ensureBinJavaSymlink()
-
-        marker.createNewFile()
     }
 
     fun downloadAndInstall(
@@ -80,7 +95,7 @@ class JreManager(
         jreHome.deleteRecursively()
         jreHome.mkdirs()
 
-        val zipFileName = if (majorVersion == 8) "jre.zip" else "jre-$majorVersion.zip"
+        val zipFileName = "$assetDir.zip"
         val cleanBase = baseUrl.removeSuffix("/")
         val fileUrl = "$cleanBase/$zipFileName"
         val tempZipFile = File(ctx.cacheDir, zipFileName)
@@ -243,7 +258,7 @@ class JreManager(
                         val isBinFile = name == "bin" || name.startsWith("bin/")
                         if (!isBinFile && name.isNotEmpty()) {
                             val out = File(jreHome, name)
-                            require(out.canonicalPath.startsWith(root)) { "path traversal: ${entry.name}" }
+                            require(out.canonicalPath.startsWith(root)) { "pathTAL traversal: ${entry.name}" }
 
                             if (entry.isSymbolicLink) {
                                 out.parentFile?.mkdirs()

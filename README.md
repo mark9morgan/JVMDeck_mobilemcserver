@@ -6,8 +6,10 @@
 
 ## Key Features
 
-- **Native Java Runtime Execution:** Runs `java` as a persistent background process managed by a Foreground Service (`ServerService`) with partial wake locks.
-- **Multi-Version JRE Support:** Supports Java 8, 17, 21, and 25 (via PojavLauncherTeam / android-openjdk-build-multiarch builds).
+- **Native Java Runtime Execution:** Runs `java` (`libjava*.so`) as a persistent background process managed by a Foreground Service (`ServerService`) with partial wake locks.
+- **Tracked Native Binaries (.so):** Native Java runtime binaries (`libjava.so`, `libjava_8.so`, `libjava_17.so`, `libjava_21.so`, `libjava_25.so`, `libunpack200.so`) and MTE bypass agent (`libnotbi.so`) are stored in `app/src/main/jniLibs/arm64-v8a/` and tracked directly in Git.
+- **Multi-Version JRE Support:** Supports Java 8, 17, 21, and 25.
+- **Dynamic JRE Download:** JRE runtime libraries and support files (`jre.zip`, `jre-17.zip`, `jre-21.zip`, `jre-25.zip`, `jre-new.zip`) are downloaded dynamically from GitHub Releases on first launch.
 - **Server Management:** Create, configure, start, stop, and monitor multiple server instances with custom RAM allocations (`-Xmx`), port bindings, and `server.properties` generation.
 - **Interactive Console:** Real-time `stdout`/`stderr` log streaming and command input to the running JVM process.
 - **Mod & Plugin Integration:** Built-in integration with Modrinth API v2 to search, download, and install compatible plugins and mods.
@@ -23,8 +25,8 @@
 
 - **UI:** Jetpack Compose, Material 3, Kotlin Coroutines, Custom Charts.
 - **Background Processing:** Android Foreground Service (`specialUse` type), `ProcessBuilder`, `MonitoringRuntime`.
-- **Compression & Archives:** Apache Commons Compress (`tar.xz`, `xz`).
-- **Native Development:** C / CMake (Bionic `mallopt` & `prctl` interop, `libnotbi.so`).
+- **Compression & Archives:** Apache Commons Compress (`tar.xz`, `xz`), `java.util.zip.ZipFile`.
+- **Native Development:** C / CMake (Bionic `mallopt` & `prctl` interop, `libnotbi.so`, `libjava*.so`).
 
 ---
 
@@ -39,33 +41,19 @@
 ## Setup & Installation Instructions
 
 1. **Clone or Open Project:**
-   Open Android Studio and select `Open an Existing Project`, pointing to the `JvmDeck` root folder. Gradle wrapper will download automatically.
+   Open Android Studio and select `Open an Existing Project`, pointing to the `JvmDeck` root folder.
 
-2. **Required JRE Binaries & Archives (Manual Placement):**
-   Due to large file sizes and platform licensing, JRE archives and native binaries must be placed manually before building:
-   - **Native Java binary:** `app/src/main/jniLibs/arm64-v8a/libjava.so` (renamed from `bin/java` from aarch64 bionic OpenJDK build).
-   - **JRE Asset archives:** Place tar.xz archives (`universal.tar.xz`, `bin-arm64.tar.xz`, `jre-21/`, etc.) into `app/src/main/assets/`.
-   *(Source: PojavLauncherTeam / android-openjdk-build-multiarch builds).*
-
-3. **Build & Run:**
-   Connect an `arm64-v8a` Android 14+ device, and run the `:app:assembleDebug` build or click **Run** in Android Studio.
+2. **Build & Run:**
+   Connect an `arm64-v8a` Android 14+ device, and run the `:app:assembleDebug` build. The built APK will be output as **`JvmDeck-v0.1.apk`**.
 
 ---
 
 ## Verification Workflow
 
-1. Open the app and navigate to **Settings** -> **Diag** to verify that `libjava.so`, `jvm.cfg`, and `libjvm.so` are correctly detected.
-2. Run a simple test or check `java -version`.
-3. Create a test server (e.g., Paper 1.20.4), let it auto-download `server.jar`, and start it.
+1. Open the app and complete the automated JRE setup/download screen.
+2. Navigate to **Settings** -> **Diag** to verify that `libjava.so`, `jvm.cfg`, and `libjvm.so` are correctly detected.
+3. Create a test server (e.g., Minecraft Vanilla or Paper), let it download `server.jar`, and start it.
 4. Check the **Monitoring** tab to review real-time CPU and RAM performance charts.
-
----
-
-## Known Limitations & Troubleshooting
-
-- **Symlinks in Tar.xz:** Standard `ZipInputStream` / `TarArchiveInputStream` handles symbolic links where supported, but ensure your JRE tarballs are correctly structured.
-- **16 KB Page Size:** On Android 15+ devices with 16 KB page size support, ensure all native `.so` binaries are properly page-aligned.
-- **Battery Optimization:** For reliable background server execution without being killed by the OS, grant permission to ignore battery optimizations when prompted.
 
 ---
 
