@@ -79,22 +79,42 @@ class JreManager(
         jreHome.deleteRecursively()
         jreHome.mkdirs()
 
-        val archives = listOf("universal.tar.xz", "bin-arm64.tar.xz")
-        val totalArchives = archives.size
+        val archives = listOf("universal.tar.xz", "bin-arm64.tar.xz", "jre.tar.xz")
+        val cleanBase = baseUrl.removeSuffix("/")
 
-        archives.forEachIndexed { index, archiveName ->
-            val cleanBase = baseUrl.removeSuffix("/")
-            val fileUrl = "$cleanBase/$archiveName"
+        val targetArchives = archives.filter { archive ->
+            try {
+                val checkUrl = URL("$cleanBase/$assetDir/$archive")
+                val conn = checkUrl.openConnection() as HttpURLConnection
+                conn.requestMethod = "HEAD"
+                conn.connectTimeout = 5000
+                conn.connect()
+                val ok = conn.responseCode == 200
+                conn.disconnect()
+                ok
+            } catch (_: Exception) {
+                false
+            }
+        }.ifEmpty { listOf("universal.tar.xz", "bin-arm64.tar.xz") }
+
+        val totalArchives = targetArchives.size
+
+        targetArchives.forEachIndexed { index, archiveName ->
+            val fileUrl = "$cleanBase/$assetDir/$archiveName"
             val tempFile = File(ctx.cacheDir, archiveName)
 
             try {
-                onProgress(index.toFloat() / totalArchives, "Завантаження $archiveName (${index + 1}/$totalArchives)...")
+                onProgress(index.toFloat() / totalArchives, "Завантаження $assetDir/$archiveName (${index + 1}/$totalArchives)...")
                 val url = URL(fileUrl)
                 val connection = url.openConnection() as HttpURLConnection
                 connection.setRequestProperty("User-Agent", "JvmDeck-Android")
                 connection.connectTimeout = 15000
                 connection.readTimeout = 30000
                 connection.connect()
+
+                if (connection.responseCode != 200) {
+                    return@forEachIndexed
+                }
 
                 val fileSize = connection.contentLength.toFloat()
                 var downloadedBytes = 0L
